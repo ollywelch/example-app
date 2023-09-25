@@ -1,0 +1,26 @@
+openapi: "3.1.0"
+info:
+  version: "1"
+  title: "Test server"
+  description: "Just for testing"
+paths:
+  /ping:
+    get:
+      operationId: "get_ping"
+      description: ""
+      parameters: []
+      responses:
+        200:
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Pong"
+components:
+  securitySchemes: {}
+  schemas:
+    Pong:
+      properties:
+        value:
+          nullable: false
+          type: "string"

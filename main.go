@@ -1,16 +1,13 @@
 package main
 
 import (
-	"log"
-	"net/http"
+	"github.com/labstack/echo/v4/middleware"
+	"github.com/labstack/echo/v4"
 )
 
-
-func handlePing(w http.ResponseWriter, r *http.Request) {
-	w.Write([]byte("pong"))
-}
-
 func main() {
-	http.HandleFunc("/ping", handlePing)
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	e := echo.New()
+	RegisterHandlers(e, &Server{})
+	e.Use(middleware.Logger())
+	e.Logger.Fatal(e.Start(":8080"))
 }
