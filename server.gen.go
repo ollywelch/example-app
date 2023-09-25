@@ -20,8 +20,8 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-// Pong defines model for Pong.
-type Pong struct {
+// ValueResponse defines model for ValueResponse.
+type ValueResponse struct {
 	Value *string `json:"value,omitempty"`
 }
 
@@ -191,7 +191,7 @@ type ClientWithResponsesInterface interface {
 type GetPingResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
-	JSON200      *Pong
+	JSON200      *ValueResponse
 }
 
 // Status returns HTTPResponse.Status
@@ -234,7 +234,7 @@ func ParseGetPingResponse(rsp *http.Response) (*GetPingResponse, error) {
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest Pong
+		var dest ValueResponse
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -301,10 +301,10 @@ func RegisterHandlersWithBaseURL(router EchoRouter, si ServerInterface, baseURL 
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"H4sIAAAAAAAC/1SQwWrDMBBEf8VMezSx0970A6U95dAfEM7aUXGkZXdjKMH/XlZqKdFlB0nDzL47pnLl",
-	"kimbItyh04WuscpTyYtPlsIklqjebnG9kQv7ZkKAmqS8YPfTI+W5+OOZdJLElkpGwMdNrZuLdEZq/ruH",
-	"JVvd/klqnZJsJOixkWizHLH3KEw5ckLA6+F4GNGDo11qjYFTa7eQ+fCK0ePezwh4Izu1HCHlkrV1fxlH",
-	"H1PJRrnaIvOapmocvtST/xC4ehaaEfA0/DMafgENlU7d+XHXRmL/CQAA//8nkQqYWAEAAA==",
+	"H4sIAAAAAAAC/1RQ0WrDMAz8lXLbY2jS7c0/MLanMcbejau0HqktJDUwQv59yOkY9YsOn8+nuwWpXrgW",
+	"KqYICzSd6RIb/IrTlT5IuRYlv2CpTGKZGj077cB+mBCgJrmcsPrpkMtYnTySJslsuRYEvF3VdmOVnZGa",
+	"v+5g2SaXf5LaTklmEnSYSXSTHLB2qEwlckbA837YH9CBo53bGj37P2HBicyHrxjd7vWIgBey981HbkGa",
+	"6GkYfKRajEqTReYppybsv9Wd/7pw9Cg0IuCh/y+rvzXV39fUwt+H3ipZfwMAAP//6WXr3WoBAAA=",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file
