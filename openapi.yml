@@ -3,12 +3,17 @@ info:
   version: "1"
   title: "Test server"
   description: "Just for testing"
+servers:
+  - url: http://localhost:8080/api
+    description: Local server
 paths:
   /ping:
     get:
       operationId: "get_ping"
       description: ""
       parameters: []
+      security:
+        - jwt: []
       responses:
         200:
           description: ""
@@ -43,6 +48,8 @@ paths:
     get:
       description: 'Get currently logged in user'
       parameters: []
+      security:
+        - jwt: []
       responses:
         '200':
           description: OK
@@ -50,8 +57,27 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/UserResponse"
+  /users:
+    get:
+      description: ''
+      parameters: []
+      security:
+        - jwt: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/UserResponse"
 components:
-  securitySchemes: {}
+  securitySchemes: 
+    jwt:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
   schemas:
     ValueResponse:
       properties:
@@ -90,7 +116,10 @@ components:
     UserResponse:
       type: object
       properties:
+        id:
+          type: integer
         username:
           type: string
       required:
+        - id
         - username

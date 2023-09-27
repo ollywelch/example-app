@@ -21,6 +21,10 @@ import (
 	"github.com/oapi-codegen/runtime"
 )
 
+const (
+	JwtScopes = "jwt.Scopes"
+)
+
 // ErrorResponse defines model for ErrorResponse.
 type ErrorResponse struct {
 	Message string `json:"message"`
@@ -40,6 +44,7 @@ type LoginResponse struct {
 
 // UserResponse defines model for UserResponse.
 type UserResponse struct {
+	Id       int    `json:"id"`
 	Username string `json:"username"`
 }
 
@@ -132,6 +137,9 @@ type ClientInterface interface {
 	// GetPing request
 	GetPing(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetUsers request
+	GetUsers(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetUsersMe request
 	GetUsersMe(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
@@ -162,6 +170,18 @@ func (c *Client) PostLoginWithFormdataBody(ctx context.Context, body PostLoginFo
 
 func (c *Client) GetPing(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetPingRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetUsers(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetUsersRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -234,6 +254,33 @@ func NewGetPingRequest(server string) (*http.Request, error) {
 	}
 
 	operationPath := fmt.Sprintf("/ping")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetUsersRequest generates requests for GetUsers
+func NewGetUsersRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/users")
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -329,6 +376,9 @@ type ClientWithResponsesInterface interface {
 	// GetPingWithResponse request
 	GetPingWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetPingResponse, error)
 
+	// GetUsersWithResponse request
+	GetUsersWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetUsersResponse, error)
+
 	// GetUsersMeWithResponse request
 	GetUsersMeWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetUsersMeResponse, error)
 }
@@ -372,6 +422,28 @@ func (r GetPingResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r GetPingResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetUsersResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *[]UserResponse
+}
+
+// Status returns HTTPResponse.Status
+func (r GetUsersResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetUsersResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -424,6 +496,15 @@ func (c *ClientWithResponses) GetPingWithResponse(ctx context.Context, reqEditor
 		return nil, err
 	}
 	return ParseGetPingResponse(rsp)
+}
+
+// GetUsersWithResponse request returning *GetUsersResponse
+func (c *ClientWithResponses) GetUsersWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetUsersResponse, error) {
+	rsp, err := c.GetUsers(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetUsersResponse(rsp)
 }
 
 // GetUsersMeWithResponse request returning *GetUsersMeResponse
@@ -494,6 +575,32 @@ func ParseGetPingResponse(rsp *http.Response) (*GetPingResponse, error) {
 	return response, nil
 }
 
+// ParseGetUsersResponse parses an HTTP response from a GetUsersWithResponse call
+func ParseGetUsersResponse(rsp *http.Response) (*GetUsersResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetUsersResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []UserResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseGetUsersMeResponse parses an HTTP response from a GetUsersMeWithResponse call
 func ParseGetUsersMeResponse(rsp *http.Response) (*GetUsersMeResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -529,6 +636,9 @@ type ServerInterface interface {
 	// (GET /ping)
 	GetPing(ctx echo.Context) error
 
+	// (GET /users)
+	GetUsers(ctx echo.Context) error
+
 	// (GET /users/me)
 	GetUsersMe(ctx echo.Context) error
 }
@@ -551,14 +661,29 @@ func (w *ServerInterfaceWrapper) PostLogin(ctx echo.Context) error {
 func (w *ServerInterfaceWrapper) GetPing(ctx echo.Context) error {
 	var err error
 
+	ctx.Set(JwtScopes, []string{})
+
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.GetPing(ctx)
+	return err
+}
+
+// GetUsers converts echo context to params.
+func (w *ServerInterfaceWrapper) GetUsers(ctx echo.Context) error {
+	var err error
+
+	ctx.Set(JwtScopes, []string{})
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.GetUsers(ctx)
 	return err
 }
 
 // GetUsersMe converts echo context to params.
 func (w *ServerInterfaceWrapper) GetUsersMe(ctx echo.Context) error {
 	var err error
+
+	ctx.Set(JwtScopes, []string{})
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.GetUsersMe(ctx)
@@ -595,6 +720,7 @@ func RegisterHandlersWithBaseURL(router EchoRouter, si ServerInterface, baseURL 
 
 	router.POST(baseURL+"/login", wrapper.PostLogin)
 	router.GET(baseURL+"/ping", wrapper.GetPing)
+	router.GET(baseURL+"/users", wrapper.GetUsers)
 	router.GET(baseURL+"/users/me", wrapper.GetUsersMe)
 
 }
@@ -602,15 +728,17 @@ func RegisterHandlersWithBaseURL(router EchoRouter, si ServerInterface, baseURL 
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"H4sIAAAAAAAC/7RUTY/TMBD9K9bAMd20wCk3kFAFLGKFgAviYJJp6iX1mJlJS1XlvyM7/djQdBFoNycr",
-	"M37v+fmNd1DSKpBHrwLFDqRc4sqm5Wtm4o8ogbxg/BGYArI6TOUVitg6FXQbEAoQZedr6DIQtdrKnZLz",
-	"ijUydF0GjD9bx1hB8fXQmB3RvmWHLfT9FkuNaNdUO/+Kqu25iGBFNsTVqIpWkL1djUn8Q8axMzshXlRy",
-	"2RKlH+j/zta3jeF/FrzH8f84zxjJF9u0eJllHctjFF1kcX5BsVihlOyCOvJQwNtW1CyIjaJo7M5AnTZx",
-	"+ycUNYK8RoYM1sjSb5lFKRTQ2+CggOdX06tZsl+XSUbeRK+TPBI9p7ym2jhvlIwu0dgQGlfaVEuwnNZv",
-	"KijghkTTxUFvEooewlSSV/QJ/Q5C/muy2WwmC+LVpOUGfUkVVqfpiKunjAso4El+Gp98Pzv5Ka/d8GKU",
-	"W0w/eu/TOZ9Np/couRXy/0h8vNlEPjTtw7vo+ovp7MEoh4/ECOXLVpfodY9uFtY1WEEfpjzErBQ7qDHJ",
-	"GN7bHPWmz9KjGTYchRH1B6FxoCTvR28vdtg4RzVly4xem61pqK6xivmMG88SOUeNky7v8TEPN3hMLoQh",
-	"fb8DAAD//1Vuc4YEBgAA",
+	"H4sIAAAAAAAC/7RUTW/UTAz+K5Hf95g2W+BQ5QYSVEARFbRwqPYwTbzZKcl4sJ0uqyr/Hc1kv9JmWyro",
+	"KaPYfvz44/EtFNR4cuhUIL8FKebYmPh8y0z8BcWTEww/PJNHVovR3KCIqaJBlx4hB1G2roIuBVGjreyY",
+	"rFOskKHrUmD82VrGEvLLtWO6QZum6xC6usZCA9opVda9oXJ5n4Q3IgvicpRFK8jONGMU79DYeKZbxL1M",
+	"9rdE6Qe6x7P1bmP4F4IPdNyWYx19Sp22hB33MQbfTN3ifgo3wTyWJ2QSLFq2uvwadqj3v15o+FyhYeR3",
+	"xI1RyOHD93NI+1ULIL0VNmzmqh4ionUzCvElSsHWqyUXwlvRZEacKIqG9Cmo1TqEnqNoIsg3Ee8GWfqQ",
+	"o1AbeXTGW8jh5eHk8CgOW+eRZ1aHycZ6SfR+ylOqEusSpUTnmBjva1uYaIuwHN/vS8jhjETjmkDfehRd",
+	"r25BTtFF9B2E7NfBYrE4mBE3By3X6AoqsdxqMbz+Z5xBDv9lW7FmK6VmW3V0w3Ertxh/9MOMdb6YTB5g",
+	"ci3knph4syox+bBpnz+Grr+aHP2zlMOTNJLydatzdLpCT2bG1liu1jPzYVfyW6gw0hjO7QT1rN+lZ2vY",
+	"UFsj7GFXRZBfrvRzOe2msYCgXHmogovo8JclWMVGHqtlcKm6jXQNs1nu24U/KC7rr9iqviHECWpStMzo",
+	"tF4mNVUVlkGUIfCeDNfN+ITPOdFhF55cdTSFWyXRcvfkFKbe3rKW69VpzLOsDrY5iebHk+NJFo5aN+1+",
+	"BwAA//9TWcBzzAcAAA==",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
 	"time"
 
@@ -8,13 +9,15 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-type Server struct{
+type Server struct {
 	jwtSecret []byte
+	store     Store
 }
 
 func NewServer() *Server {
 	return &Server{
 		jwtSecret: []byte("supersecret"),
+		store:     &InMemoryStore{},
 	}
 }
 
@@ -28,13 +31,15 @@ func (s *Server) PostLogin(ctx echo.Context) error {
 	username := ctx.FormValue("username")
 	password := ctx.FormValue("password")
 
-	if username != "olly" || password != "password" {
+	user := s.store.GetUserByName(username)
+
+	if user == nil || password != "password" {
 		status := http.StatusUnauthorized
 		return ctx.JSON(status, ErrorResponse{Status: status, Message: "Invalid login details"})
 	}
 
 	claims := jwt.RegisteredClaims{
-		Subject: "olly",
+		Subject:   user.Username,
 		ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour * 3)),
 	}
 
@@ -50,7 +55,16 @@ func (s *Server) PostLogin(ctx echo.Context) error {
 
 func (s *Server) GetUsersMe(ctx echo.Context) error {
 	username := userIDFromToken(ctx)
-	return ctx.JSON(http.StatusOK, UserResponse{Username: username})
+	user := s.store.GetUserByName(username)
+	if user != nil {
+		return ctx.JSON(http.StatusOK, user)
+	}
+	return fmt.Errorf("failed to find user with name %s in the DB", username)
+}
+
+func (s *Server) GetUsers(ctx echo.Context) error {
+	users := s.store.GetUsers()
+	return ctx.JSON(http.StatusOK, users)
 }
 
 func userIDFromToken(ctx echo.Context) string {
