@@ -18,12 +18,38 @@ import (
 
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/labstack/echo/v4"
+	"github.com/oapi-codegen/runtime"
 )
+
+// ErrorResponse defines model for ErrorResponse.
+type ErrorResponse struct {
+	Message string `json:"message"`
+	Status  int    `json:"status"`
+}
+
+// LoginBody defines model for LoginBody.
+type LoginBody struct {
+	Password string `json:"password"`
+	Username string `json:"username"`
+}
+
+// LoginResponse defines model for LoginResponse.
+type LoginResponse struct {
+	Token string `json:"token"`
+}
+
+// UserResponse defines model for UserResponse.
+type UserResponse struct {
+	Username string `json:"username"`
+}
 
 // ValueResponse defines model for ValueResponse.
 type ValueResponse struct {
 	Value *string `json:"value,omitempty"`
 }
+
+// PostLoginFormdataRequestBody defines body for PostLogin for application/x-www-form-urlencoded ContentType.
+type PostLoginFormdataRequestBody = LoginBody
 
 // RequestEditorFn  is the function signature for the RequestEditor callback function
 type RequestEditorFn func(ctx context.Context, req *http.Request) error
@@ -98,8 +124,40 @@ func WithRequestEditorFn(fn RequestEditorFn) ClientOption {
 
 // The interface specification for the client above.
 type ClientInterface interface {
+	// PostLoginWithBody request with any body
+	PostLoginWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	PostLoginWithFormdataBody(ctx context.Context, body PostLoginFormdataRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetPing request
 	GetPing(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetUsersMe request
+	GetUsersMe(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+}
+
+func (c *Client) PostLoginWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostLoginRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PostLoginWithFormdataBody(ctx context.Context, body PostLoginFormdataRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostLoginRequestWithFormdataBody(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
 }
 
 func (c *Client) GetPing(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -114,6 +172,58 @@ func (c *Client) GetPing(ctx context.Context, reqEditors ...RequestEditorFn) (*h
 	return c.Client.Do(req)
 }
 
+func (c *Client) GetUsersMe(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetUsersMeRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// NewPostLoginRequestWithFormdataBody calls the generic PostLogin builder with application/x-www-form-urlencoded body
+func NewPostLoginRequestWithFormdataBody(server string, body PostLoginFormdataRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	bodyStr, err := runtime.MarshalForm(body, nil)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = strings.NewReader(bodyStr.Encode())
+	return NewPostLoginRequestWithBody(server, "application/x-www-form-urlencoded", bodyReader)
+}
+
+// NewPostLoginRequestWithBody generates requests for PostLogin with any type of body
+func NewPostLoginRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/login")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewGetPingRequest generates requests for GetPing
 func NewGetPingRequest(server string) (*http.Request, error) {
 	var err error
@@ -124,6 +234,33 @@ func NewGetPingRequest(server string) (*http.Request, error) {
 	}
 
 	operationPath := fmt.Sprintf("/ping")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetUsersMeRequest generates requests for GetUsersMe
+func NewGetUsersMeRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/users/me")
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -184,8 +321,39 @@ func WithBaseURL(baseURL string) ClientOption {
 
 // ClientWithResponsesInterface is the interface specification for the client with responses above.
 type ClientWithResponsesInterface interface {
+	// PostLoginWithBodyWithResponse request with any body
+	PostLoginWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostLoginResponse, error)
+
+	PostLoginWithFormdataBodyWithResponse(ctx context.Context, body PostLoginFormdataRequestBody, reqEditors ...RequestEditorFn) (*PostLoginResponse, error)
+
 	// GetPingWithResponse request
 	GetPingWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetPingResponse, error)
+
+	// GetUsersMeWithResponse request
+	GetUsersMeWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetUsersMeResponse, error)
+}
+
+type PostLoginResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *LoginResponse
+	JSON401      *ErrorResponse
+}
+
+// Status returns HTTPResponse.Status
+func (r PostLoginResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PostLoginResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
 }
 
 type GetPingResponse struct {
@@ -210,6 +378,45 @@ func (r GetPingResponse) StatusCode() int {
 	return 0
 }
 
+type GetUsersMeResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *UserResponse
+}
+
+// Status returns HTTPResponse.Status
+func (r GetUsersMeResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetUsersMeResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// PostLoginWithBodyWithResponse request with arbitrary body returning *PostLoginResponse
+func (c *ClientWithResponses) PostLoginWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostLoginResponse, error) {
+	rsp, err := c.PostLoginWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostLoginResponse(rsp)
+}
+
+func (c *ClientWithResponses) PostLoginWithFormdataBodyWithResponse(ctx context.Context, body PostLoginFormdataRequestBody, reqEditors ...RequestEditorFn) (*PostLoginResponse, error) {
+	rsp, err := c.PostLoginWithFormdataBody(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostLoginResponse(rsp)
+}
+
 // GetPingWithResponse request returning *GetPingResponse
 func (c *ClientWithResponses) GetPingWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetPingResponse, error) {
 	rsp, err := c.GetPing(ctx, reqEditors...)
@@ -217,6 +424,48 @@ func (c *ClientWithResponses) GetPingWithResponse(ctx context.Context, reqEditor
 		return nil, err
 	}
 	return ParseGetPingResponse(rsp)
+}
+
+// GetUsersMeWithResponse request returning *GetUsersMeResponse
+func (c *ClientWithResponses) GetUsersMeWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetUsersMeResponse, error) {
+	rsp, err := c.GetUsersMe(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetUsersMeResponse(rsp)
+}
+
+// ParsePostLoginResponse parses an HTTP response from a PostLoginWithResponse call
+func ParsePostLoginResponse(rsp *http.Response) (*PostLoginResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PostLoginResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest LoginResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	}
+
+	return response, nil
 }
 
 // ParseGetPingResponse parses an HTTP response from a GetPingWithResponse call
@@ -245,16 +494,57 @@ func ParseGetPingResponse(rsp *http.Response) (*GetPingResponse, error) {
 	return response, nil
 }
 
+// ParseGetUsersMeResponse parses an HTTP response from a GetUsersMeWithResponse call
+func ParseGetUsersMeResponse(rsp *http.Response) (*GetUsersMeResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetUsersMeResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest UserResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 
+	// (POST /login)
+	PostLogin(ctx echo.Context) error
+
 	// (GET /ping)
 	GetPing(ctx echo.Context) error
+
+	// (GET /users/me)
+	GetUsersMe(ctx echo.Context) error
 }
 
 // ServerInterfaceWrapper converts echo contexts to parameters.
 type ServerInterfaceWrapper struct {
 	Handler ServerInterface
+}
+
+// PostLogin converts echo context to params.
+func (w *ServerInterfaceWrapper) PostLogin(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.PostLogin(ctx)
+	return err
 }
 
 // GetPing converts echo context to params.
@@ -263,6 +553,15 @@ func (w *ServerInterfaceWrapper) GetPing(ctx echo.Context) error {
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.GetPing(ctx)
+	return err
+}
+
+// GetUsersMe converts echo context to params.
+func (w *ServerInterfaceWrapper) GetUsersMe(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.GetUsersMe(ctx)
 	return err
 }
 
@@ -294,17 +593,24 @@ func RegisterHandlersWithBaseURL(router EchoRouter, si ServerInterface, baseURL 
 		Handler: si,
 	}
 
+	router.POST(baseURL+"/login", wrapper.PostLogin)
 	router.GET(baseURL+"/ping", wrapper.GetPing)
+	router.GET(baseURL+"/users/me", wrapper.GetUsersMe)
 
 }
 
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"H4sIAAAAAAAC/1RQ0WrDMAz8lXLbY2jS7c0/MLanMcbejau0HqktJDUwQv59yOkY9YsOn8+nuwWpXrgW",
-	"KqYICzSd6RIb/IrTlT5IuRYlv2CpTGKZGj077cB+mBCgJrmcsPrpkMtYnTySJslsuRYEvF3VdmOVnZGa",
-	"v+5g2SaXf5LaTklmEnSYSXSTHLB2qEwlckbA837YH9CBo53bGj37P2HBicyHrxjd7vWIgBey981HbkGa",
-	"6GkYfKRajEqTReYppybsv9Wd/7pw9Cg0IuCh/y+rvzXV39fUwt+H3ipZfwMAAP//6WXr3WoBAAA=",
+	"H4sIAAAAAAAC/7RUTY/TMBD9K9bAMd20wCk3kFAFLGKFgAviYJJp6iX1mJlJS1XlvyM7/djQdBFoNycr",
+	"M37v+fmNd1DSKpBHrwLFDqRc4sqm5Wtm4o8ogbxg/BGYArI6TOUVitg6FXQbEAoQZedr6DIQtdrKnZLz",
+	"ijUydF0GjD9bx1hB8fXQmB3RvmWHLfT9FkuNaNdUO/+Kqu25iGBFNsTVqIpWkL1djUn8Q8axMzshXlRy",
+	"2RKlH+j/zta3jeF/FrzH8f84zxjJF9u0eJllHctjFF1kcX5BsVihlOyCOvJQwNtW1CyIjaJo7M5AnTZx",
+	"+ycUNYK8RoYM1sjSb5lFKRTQ2+CggOdX06tZsl+XSUbeRK+TPBI9p7ym2jhvlIwu0dgQGlfaVEuwnNZv",
+	"KijghkTTxUFvEooewlSSV/QJ/Q5C/muy2WwmC+LVpOUGfUkVVqfpiKunjAso4El+Gp98Pzv5Ka/d8GKU",
+	"W0w/eu/TOZ9Np/couRXy/0h8vNlEPjTtw7vo+ovp7MEoh4/ECOXLVpfodY9uFtY1WEEfpjzErBQ7qDHJ",
+	"GN7bHPWmz9KjGTYchRH1B6FxoCTvR28vdtg4RzVly4xem61pqK6xivmMG88SOUeNky7v8TEPN3hMLoQh",
+	"fb8DAAD//1Vuc4YEBgAA",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

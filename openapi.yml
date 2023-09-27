@@ -16,6 +16,40 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ValueResponse"
+  /login:
+    post:
+      description: 'Log in to the application'
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: "#/components/schemas/LoginBody"
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+        '401':
+          description: Authentication failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /users/me:
+    get:
+      description: 'Get currently logged in user'
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserResponse"
 components:
   securitySchemes: {}
   schemas:
@@ -33,3 +67,30 @@ components:
         message:
           type: string
           nullable: false
+      required:
+        - status
+        - message
+    LoginBody:
+      type: object
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+      required:
+        - username
+        - password
+    LoginResponse:
+      type: object
+      properties:
+        token:
+          type: string
+      required:
+        - token
+    UserResponse:
+      type: object
+      properties:
+        username:
+          type: string
+      required:
+        - username

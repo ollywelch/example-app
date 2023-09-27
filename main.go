@@ -1,13 +1,29 @@
 package main
 
 import (
+	echojwt "github.com/labstack/echo-jwt/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/labstack/echo/v4"
 )
 
 func main() {
 	e := echo.New()
-	RegisterHandlers(e, &Server{})
+
+	// *** MIDDLEWARE ***
 	e.Use(middleware.Logger())
+	e.Use(middleware.Recover())
+
+	// *** HANDLERS ***
+	server := NewServer()
+	RegisterHandlersWithBaseURL(e, server, "/api")
+
+	jwtConfig := echojwt.Config{
+		SigningKey: server.jwtSecret,
+		Skipper: func(c echo.Context) bool {
+			return c.Path() == "/api/login"
+		},
+	}
+	e.Use(echojwt.WithConfig(jwtConfig))
+
 	e.Logger.Fatal(e.Start(":8080"))
 }
