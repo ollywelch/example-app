@@ -72,6 +72,28 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/UserResponse"
+    post:
+      description: 'Create a new user'
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NewUser"
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserResponse"
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 components:
   securitySchemes: 
     jwt:
@@ -113,6 +135,16 @@ components:
           type: string
       required:
         - token
+    NewUser:
+      type: object
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+      required:
+        - username
+        - password
     UserResponse:
       type: object
       properties:
@@ -120,6 +152,10 @@ components:
           type: integer
         username:
           type: string
+        password:
+          type: string
+          x-go-json-ignore: true
       required:
         - id
         - username
+        - password

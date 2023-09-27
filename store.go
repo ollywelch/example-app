@@ -6,6 +6,7 @@ type Store interface {
 	GetUsers() []UserResponse
 	GetUserByName(string) *UserResponse
 	GetUserByID(int) *UserResponse
+	CreateUser(NewUser) *UserResponse
 }
 
 type InMemoryStore struct{}
@@ -15,9 +16,11 @@ var (
 		{
 			Id:       1,
 			Username: "Olly",
+			Password: "password",
 		},
 	}
-	mu = sync.Mutex{}
+	counter = 1
+	mu      = sync.Mutex{}
 )
 
 func (s *InMemoryStore) GetUsers() []UserResponse {
@@ -46,4 +49,16 @@ func (s *InMemoryStore) GetUserByID(id int) *UserResponse {
 		}
 	}
 	return nil
+}
+
+func (s *InMemoryStore) CreateUser(u NewUser) *UserResponse {
+	if exists := s.GetUserByName(u.Username); exists != nil {
+		return nil
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	user := UserResponse{Id: counter + 1, Username: u.Username, Password: u.Password}
+	users = append(users, user)
+	counter++
+	return &user
 }

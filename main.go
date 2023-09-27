@@ -1,6 +1,8 @@
 package main
 
 import (
+	"net/http"
+
 	echojwt "github.com/labstack/echo-jwt/v4"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
@@ -20,7 +22,7 @@ func main() {
 	jwtConfig := echojwt.Config{
 		SigningKey: server.jwtSecret,
 		Skipper: func(c echo.Context) bool {
-			return c.Path() == "/api/login"
+			return c.Path() == "/api/login" || (c.Request().Method == http.MethodPost && c.Path() == "/api/users")
 		},
 	}
 	e.Use(echojwt.WithConfig(jwtConfig))

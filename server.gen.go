@@ -42,9 +42,16 @@ type LoginResponse struct {
 	Token string `json:"token"`
 }
 
+// NewUser defines model for NewUser.
+type NewUser struct {
+	Password string `json:"password"`
+	Username string `json:"username"`
+}
+
 // UserResponse defines model for UserResponse.
 type UserResponse struct {
 	Id       int    `json:"id"`
+	Password string `json:"-"`
 	Username string `json:"username"`
 }
 
@@ -55,6 +62,9 @@ type ValueResponse struct {
 
 // PostLoginFormdataRequestBody defines body for PostLogin for application/x-www-form-urlencoded ContentType.
 type PostLoginFormdataRequestBody = LoginBody
+
+// PostUsersJSONRequestBody defines body for PostUsers for application/json ContentType.
+type PostUsersJSONRequestBody = NewUser
 
 // RequestEditorFn  is the function signature for the RequestEditor callback function
 type RequestEditorFn func(ctx context.Context, req *http.Request) error
@@ -140,6 +150,11 @@ type ClientInterface interface {
 	// GetUsers request
 	GetUsers(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// PostUsersWithBody request with any body
+	PostUsersWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	PostUsers(ctx context.Context, body PostUsersJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetUsersMe request
 	GetUsersMe(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
@@ -182,6 +197,30 @@ func (c *Client) GetPing(ctx context.Context, reqEditors ...RequestEditorFn) (*h
 
 func (c *Client) GetUsers(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetUsersRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PostUsersWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostUsersRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PostUsers(ctx context.Context, body PostUsersJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostUsersRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -298,6 +337,46 @@ func NewGetUsersRequest(server string) (*http.Request, error) {
 	return req, nil
 }
 
+// NewPostUsersRequest calls the generic PostUsers builder with application/json body
+func NewPostUsersRequest(server string, body PostUsersJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPostUsersRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewPostUsersRequestWithBody generates requests for PostUsers with any type of body
+func NewPostUsersRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/users")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewGetUsersMeRequest generates requests for GetUsersMe
 func NewGetUsersMeRequest(server string) (*http.Request, error) {
 	var err error
@@ -379,6 +458,11 @@ type ClientWithResponsesInterface interface {
 	// GetUsersWithResponse request
 	GetUsersWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetUsersResponse, error)
 
+	// PostUsersWithBodyWithResponse request with any body
+	PostUsersWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostUsersResponse, error)
+
+	PostUsersWithResponse(ctx context.Context, body PostUsersJSONRequestBody, reqEditors ...RequestEditorFn) (*PostUsersResponse, error)
+
 	// GetUsersMeWithResponse request
 	GetUsersMeWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetUsersMeResponse, error)
 }
@@ -450,6 +534,29 @@ func (r GetUsersResponse) StatusCode() int {
 	return 0
 }
 
+type PostUsersResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON201      *UserResponse
+	JSON400      *ErrorResponse
+}
+
+// Status returns HTTPResponse.Status
+func (r PostUsersResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PostUsersResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type GetUsersMeResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -505,6 +612,23 @@ func (c *ClientWithResponses) GetUsersWithResponse(ctx context.Context, reqEdito
 		return nil, err
 	}
 	return ParseGetUsersResponse(rsp)
+}
+
+// PostUsersWithBodyWithResponse request with arbitrary body returning *PostUsersResponse
+func (c *ClientWithResponses) PostUsersWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostUsersResponse, error) {
+	rsp, err := c.PostUsersWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostUsersResponse(rsp)
+}
+
+func (c *ClientWithResponses) PostUsersWithResponse(ctx context.Context, body PostUsersJSONRequestBody, reqEditors ...RequestEditorFn) (*PostUsersResponse, error) {
+	rsp, err := c.PostUsers(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostUsersResponse(rsp)
 }
 
 // GetUsersMeWithResponse request returning *GetUsersMeResponse
@@ -601,6 +725,39 @@ func ParseGetUsersResponse(rsp *http.Response) (*GetUsersResponse, error) {
 	return response, nil
 }
 
+// ParsePostUsersResponse parses an HTTP response from a PostUsersWithResponse call
+func ParsePostUsersResponse(rsp *http.Response) (*PostUsersResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PostUsersResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest UserResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseGetUsersMeResponse parses an HTTP response from a GetUsersMeWithResponse call
 func ParseGetUsersMeResponse(rsp *http.Response) (*GetUsersMeResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -639,6 +796,9 @@ type ServerInterface interface {
 	// (GET /users)
 	GetUsers(ctx echo.Context) error
 
+	// (POST /users)
+	PostUsers(ctx echo.Context) error
+
 	// (GET /users/me)
 	GetUsersMe(ctx echo.Context) error
 }
@@ -676,6 +836,15 @@ func (w *ServerInterfaceWrapper) GetUsers(ctx echo.Context) error {
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.GetUsers(ctx)
+	return err
+}
+
+// PostUsers converts echo context to params.
+func (w *ServerInterfaceWrapper) PostUsers(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.PostUsers(ctx)
 	return err
 }
 
@@ -721,6 +890,7 @@ func RegisterHandlersWithBaseURL(router EchoRouter, si ServerInterface, baseURL 
 	router.POST(baseURL+"/login", wrapper.PostLogin)
 	router.GET(baseURL+"/ping", wrapper.GetPing)
 	router.GET(baseURL+"/users", wrapper.GetUsers)
+	router.POST(baseURL+"/users", wrapper.PostUsers)
 	router.GET(baseURL+"/users/me", wrapper.GetUsersMe)
 
 }
@@ -728,17 +898,18 @@ func RegisterHandlersWithBaseURL(router EchoRouter, si ServerInterface, baseURL 
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"H4sIAAAAAAAC/7RUTW/UTAz+K5Hf95g2W+BQ5QYSVEARFbRwqPYwTbzZKcl4sJ0uqyr/Hc1kv9JmWyro",
-	"KaPYfvz44/EtFNR4cuhUIL8FKebYmPh8y0z8BcWTEww/PJNHVovR3KCIqaJBlx4hB1G2roIuBVGjreyY",
-	"rFOskKHrUmD82VrGEvLLtWO6QZum6xC6usZCA9opVda9oXJ5n4Q3IgvicpRFK8jONGMU79DYeKZbxL1M",
-	"9rdE6Qe6x7P1bmP4F4IPdNyWYx19Sp22hB33MQbfTN3ifgo3wTyWJ2QSLFq2uvwadqj3v15o+FyhYeR3",
-	"xI1RyOHD93NI+1ULIL0VNmzmqh4ionUzCvElSsHWqyUXwlvRZEacKIqG9Cmo1TqEnqNoIsg3Ee8GWfqQ",
-	"o1AbeXTGW8jh5eHk8CgOW+eRZ1aHycZ6SfR+ylOqEusSpUTnmBjva1uYaIuwHN/vS8jhjETjmkDfehRd",
-	"r25BTtFF9B2E7NfBYrE4mBE3By3X6AoqsdxqMbz+Z5xBDv9lW7FmK6VmW3V0w3Ertxh/9MOMdb6YTB5g",
-	"ci3knph4syox+bBpnz+Grr+aHP2zlMOTNJLydatzdLpCT2bG1liu1jPzYVfyW6gw0hjO7QT1rN+lZ2vY",
-	"UFsj7GFXRZBfrvRzOe2msYCgXHmogovo8JclWMVGHqtlcKm6jXQNs1nu24U/KC7rr9iqviHECWpStMzo",
-	"tF4mNVUVlkGUIfCeDNfN+ITPOdFhF55cdTSFWyXRcvfkFKbe3rKW69VpzLOsDrY5iebHk+NJFo5aN+1+",
-	"BwAA//9TWcBzzAcAAA==",
+	"H4sIAAAAAAAC/8RVwVLbSBD9lanePcrI7O6B0m1JJVQSklAJJAfKh0Fqy0PkGaW7hXBR+vfUjGQbgWSg",
+	"AsnJKvdM93vd703fQOqWpbNohSG5AU4XuNTh8zWRo8/IpbOM/o+SXIkkBkN4icw6DwFZlQgJsJCxOTQR",
+	"sGip+FbIWMEcCZomAsIflSHMIDlfH4w22WbR+oq7uMRUfLZjlxt76LLVfRClZq4dZYMoKkayejkE8Q6M",
+	"zclom3EUyXhLxH1H+3C19thQ/o9YnzHSH+fpQYzTNNnQZKMdICO4nuRucsnOTkxuHSEkQhU+CbzJIHo0",
+	"g6+6qHCcwpUPD5X0RRnTioysvngvtOcva/E/F6gJ6Y2jpRZI4N23U4hay/gkbRQ2aBYiJYSMxs6dv58h",
+	"p2RKMc766xWLmjtSgixtm8RI4a+eIotipKuQ7wqJ2yv7npsr0erSQAL/7k339kMrZBFwxoVXaODrWO6X",
+	"PHa5MlaJU7JApcuyMKkOsZCWwvfbDBI4cSxB7tBOAVnWFkydFbQh+60M8fWkruvJ3NFyUlGBNnUZZts3",
+	"xX/9TTiHBP6Kt49O3L048dblTX/ynVCoG2bg+c90ugOJ19kTC2+kEor3m/bpve/6f9P9ZyvZf1oHSv5f",
+	"yQKtdNnVXJsCs06ecem1ktxAjgFGf25HKCetll6sYX1vDaCH2y6C5Lzzz/msmQUC3sS8i8FZOPCLFIzg",
+	"kh/i0nvpmo11NZFejWlhnFw0YrtXhFpQaWWxVp79oN22rB9jt6fNbL1ZHuWt5xN6v73329k2Jmv9Nf19",
+	"/jrUmeravHZVEGXcLqJOl/07RygqrYjQSrFShctzzPxjOjjPtYg/4Es68aH27lZrG/I7hkPk7qpIdbHd",
+	"QRUV3UpL4rjwsYVjSQ6mB9PYL6Nm1vwMAAD//2eVsZNMCgAA",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

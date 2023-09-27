@@ -53,6 +53,24 @@ func (s *Server) PostLogin(ctx echo.Context) error {
 	return ctx.JSON(200, LoginResponse{Token: t})
 }
 
+// (POST /users)
+func (s *Server) PostUsers(ctx echo.Context) error {
+	badRequest := ctx.JSON(http.StatusBadRequest, "bad request")
+
+	u := &NewUser{}
+	if err := ctx.Bind(u); err != nil {
+		return badRequest
+	}
+	if u.Username == "" || u.Password == "" {
+		return badRequest
+	}
+	user := s.store.CreateUser(*u)
+	if user == nil {
+		return badRequest
+	}
+	return ctx.JSON(http.StatusOK, *user)
+}
+
 func (s *Server) GetUsersMe(ctx echo.Context) error {
 	username := userIDFromToken(ctx)
 	user := s.store.GetUserByName(username)
