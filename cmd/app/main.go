@@ -39,11 +39,12 @@ func main() {
 			return c.Path() == "/login" || (c.Request().Method == http.MethodPost && c.Path() == "/users")
 		},
 	}
-	e.Use(echojwt.WithConfig(jwtConfig))
 
+	e.GET("/healthz", server.GetHealthz)
 	e.POST("/login", server.PostLogin)
 
 	userRoutes := e.Group("/users")
+	userRoutes.Use(echojwt.WithConfig(jwtConfig))
 	userRoutes.GET("", server.GetUsers)
 	userRoutes.GET("/me", server.GetUsersMe)
 	userRoutes.POST("", server.PostUsers)
