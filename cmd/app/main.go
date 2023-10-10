@@ -1,8 +1,10 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net/http"
+	"os"
 
 	"github.com/joho/godotenv"
 	echojwt "github.com/labstack/echo-jwt/v4"
@@ -11,11 +13,17 @@ import (
 	"github.com/ollywelch/example-app/handlers"
 )
 
-func main() {
-	if err := godotenv.Load(); err != nil {
+func init() {
+	metadataDir := os.Getenv("METADATA_DIR")
+	if metadataDir == "" {
+		metadataDir = "."
+	}
+	if err := godotenv.Load(fmt.Sprintf("%s/.env", metadataDir)); err != nil {
 		log.Fatal(err)
 	}
+}
 
+func main() {
 	e := echo.New()
 
 	// *** MIDDLEWARE ***
