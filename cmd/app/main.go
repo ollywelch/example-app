@@ -19,7 +19,7 @@ func init() {
 		metadataDir = "."
 	}
 	if err := godotenv.Load(fmt.Sprintf("%s/.env", metadataDir)); err != nil {
-		log.Fatal(err)
+		log.Printf("warning, failed to read .env file: %+v\n", err)
 	}
 }
 
