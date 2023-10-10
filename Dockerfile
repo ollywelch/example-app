@@ -6,9 +6,9 @@ WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 
-COPY *.go ./
+COPY . .
 
-RUN CGO_ENABLED=0 GOOS=linux go build -o /example-app
+RUN CGO_ENABLED=0 GOOS=linux go build -o /example-app ./cmd/app
 
 # Deploy the application binary into a lean image
 FROM scratch
